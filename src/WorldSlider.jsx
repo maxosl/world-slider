@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { geoOrthographic, geoMercator, geoPath, select, drag } from 'd3';
+import { geoOrthographic, geoMercator, geoPath, select, drag, geoCentroid, transition, interpolate } from 'd3';
 import debounce from 'lodash.debounce';
 
 const WorldMap = () => {
@@ -10,6 +10,8 @@ const WorldMap = () => {
   const [selectedCountryIndex, setSelectedCountryIndex] = useState(0);
   const [projectionType, setProjectionType] = useState("Orthographic");
   const [sensitivity, setSensitivity] = useState(0.5);
+  const [zoomLevel, setZoomLevel] = useState(4000);
+  const [tilt, setTilt] = useState(45);
   const [width, setWidth] = useState(800);
   const [height, setHeight] = useState(800);
   const rotationRef = useRef([0, -30]);
@@ -18,6 +20,8 @@ const WorldMap = () => {
   // Debounced setters for width and height
   const debouncedSetWidth = debounce((value) => setWidth(value), 100);
   const debouncedSetHeight = debounce((value) => setHeight(value), 100);
+  const debouncedSetZoomLevel = debounce((value) => setWidth(value), 100);
+  const debouncedSetTilt = debounce((value) => setHeight(value), 400);
 
   useEffect(() => {
     // Fetch list of GeoJSON files
@@ -33,6 +37,43 @@ const WorldMap = () => {
     };
     fetchGeojsonFiles();
   }, []);
+
+  const smoothRotation = useCallback((dx, dy, projection, svg, pathGenerator) => {
+    const [lambda, phi] = rotationRef.current;
+    rotationRef.current = [
+      lambda + dx * sensitivity,
+      Math.max(-90, Math.min(90, phi - dy * sensitivity)),
+    ];
+    projection.rotate(rotationRef.current);
+    svg.selectAll('path').attr('d', pathGenerator);
+  }, [sensitivity]);
+
+  const zoomToCountry = useCallback((country, projection, svg) => {
+    const [cx, cy] = geoCentroid(country);
+
+    // Create target rotation and zoom settings
+    const targetRotation = [-cx, -cy, tilt];
+    const targetScale = zoomLevel;
+
+    const pathGenerator = geoPath().projection(projection);
+
+    // Animate rotation and scale change
+    transition()
+      .duration(2000)
+      .tween('projection', () => {
+        const rotateInterpolator = interpolate(rotationRef.current, targetRotation);
+        const scaleInterpolator = interpolate(projection.scale(), targetScale);
+
+        return (t) => {
+          projection
+            .rotate(rotateInterpolator(t))
+            .scale(scaleInterpolator(t));
+
+          rotationRef.current = projection.rotate();
+          svg.selectAll('path').attr('d', pathGenerator); // Redraw paths
+        };
+      });
+  }, [tilt, zoomLevel]);
 
   useEffect(() => {
     // Fetch selected GeoJSON data
@@ -71,16 +112,6 @@ const WorldMap = () => {
       .attr('fill', (d, i) => (i === selectedCountryIndex ? 'blue' : '#ccc'))
       .attr('stroke', '#333');
 
-    const smoothRotation = (dx, dy) => {
-      const [lambda, phi] = rotationRef.current;
-      rotationRef.current = [
-        lambda + dx * sensitivity,
-        Math.max(-90, Math.min(90, phi - dy * sensitivity)),
-      ];
-      projection.rotate(rotationRef.current);
-      svg.selectAll('path').attr('d', pathGenerator);
-    };
-
     let lastX, lastY;
 
     const dragStart = (event) => {
@@ -95,7 +126,7 @@ const WorldMap = () => {
       const dy = event.y - lastY;
       lastX = event.x;
       lastY = event.y;
-      requestAnimationFrame(() => smoothRotation(dx, dy));
+      requestAnimationFrame(() => smoothRotation(dx, dy, projection, svg, pathGenerator));
     };
 
     const dragEnd = () => {
@@ -104,7 +135,11 @@ const WorldMap = () => {
 
     svg.call(drag().on('start', dragStart).on('drag', dragMove).on('end', dragEnd));
 
-  }, [geoData, width, height, projectionType, sensitivity, selectedCountryIndex]);
+    if (geoData.features[selectedCountryIndex]) {
+      zoomToCountry(geoData.features[selectedCountryIndex], projection, svg);
+    }
+
+  }, [geoData, width, height, projectionType, sensitivity, selectedCountryIndex, smoothRotation, zoomToCountry]);
 
   return (
     <div style={styles.container}>
@@ -123,6 +158,24 @@ const WorldMap = () => {
             <option value="Orthographic">Orthographic</option>
             <option value="Mercator">Mercator</option>
           </select>
+        </label>
+        <label>
+          Zoom level:
+          <input
+            type="number"
+            step="100"
+            value={zoomLevel}
+            onChange={(e) => setZoomLevel(parseFloat(e.target.value))}
+          />
+        </label>
+        <label>
+          Tilt:
+          <input
+            type="number"
+            step="1"
+            value={tilt}
+            onChange={(e) => setTilt(parseFloat(e.target.value))}
+          />
         </label>
         <label>
           Rotation Sensitivity:
