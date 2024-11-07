@@ -6,14 +6,12 @@ const WorldMap = () => {
   const svgRef = useRef(null);
   const [selectedCountryIndex, setSelectedCountryIndex] = useState(0);
   const [geoData, setGeoData] = useState(null);
-  const [rotation, setRotation] = useState([0, 0]); // Rotation angles [lambda, phi]
   const rotationRef = useRef([0, -30]); // Start with a slight tilt
+  const isDragging = useRef(false);
 
-
-
-  const width = 600;
-  const height = 600;
-  const radius = Math.min(width, height) / 2 - 20; // Radius for the orthographic projection
+  const width = 800;
+  const height = 800;
+  const initialScale = Math.min(width, height) / 2 - 20;
 
   useEffect(() => {
     const fetchGeoData = async () => {
@@ -31,110 +29,84 @@ const WorldMap = () => {
     fetchGeoData();
   }, [])
 
+
   useEffect(() => {
-    if(!geoData) return;
+    if (!geoData) return;
 
     const svg = select(svgRef.current)
       .attr('width', width)
       .attr('height', height);
 
     const projection = geoOrthographic()
-      .scale(radius)
+      .scale(initialScale)
       .translate([width / 2, height / 2])
       .rotate(rotationRef.current);
 
     const pathGenerator = geoPath().projection(projection);
 
-    // Render the globe with countries
+    // Render countries
     svg.selectAll('path')
       .data(geoData.features)
       .join('path')
       .attr('d', (feature) => pathGenerator(feature.geometry) || '')
       .attr('fill', (d, i) => (i === selectedCountryIndex ? 'blue' : '#ccc'))
-      .attr('stroke', '#333')
-      .on('click', (event, d) => {
-        const index = geoData.features.indexOf(d);
-        setSelectedCountryIndex(index);
-      });
+      .attr('stroke', '#333');
 
-    // Smooth rotation logic with requestAnimationFrame
-    let lastRotation = rotationRef.current;
+    // Function to handle rotation and smooth the dragging effect
+    const smoothRotation = (dx, dy) => {
+      const [lambda, phi] = rotationRef.current;
+      const sensitivity = 0.5; // Adjust sensitivity to control speed
 
-    function render() {
-      const currentRotation = projection.rotate();
-      if (
-        currentRotation[0] !== lastRotation[0] ||
-        currentRotation[1] !== lastRotation[1]
-      ) {
-        lastRotation = [...currentRotation];
-        svg.selectAll('path').attr('d', pathGenerator); // Redraw paths
-      }
-      requestAnimationFrame(render);
-    }
-    render();
-
-    // Set up drag behavior for smooth rotation
-    const dragFunc = drag().on('drag', (event) => {
-      const [lambda, phi] = projection.rotate();
-      const sensitivity = 2.0;
-
-      const targetRotation = [
-        lambda + event.dx * sensitivity,
-        Math.max(-90, Math.min(90, phi - event.dy * sensitivity)),
+      rotationRef.current = [
+        lambda + dx * sensitivity,
+        Math.max(-90, Math.min(90, phi - dy * sensitivity)),
       ];
 
-      const interpolator = interpolate(rotationRef.current, targetRotation);
+      projection.rotate(rotationRef.current);
 
-      transition()
-        .duration(100)
-        .tween('rotate', () => (t) => {
-          const newRotation = interpolator(t);
-          projection.rotate(newRotation);
-          rotationRef.current = newRotation;
-        });
-    });
+      svg.selectAll('path').attr('d', pathGenerator); // Redraw paths
+    };
 
-    svg.call(dragFunc);
-  }, [geoData, rotation, radius, selectedCountryIndex]);
+    // Drag event handler with requestAnimationFrame for smoother transitions
+    let lastX, lastY;
 
-  useEffect(() => {
-    if (!geoData) return;
+    const dragStart = (event) => {
+      isDragging.current = true;
+      lastX = event.x;
+      lastY = event.y;
+    };
 
-    const projection = geoOrthographic()
-      .scale(radius)
-      .translate([width / 2, height / 2])
-      .rotate(rotationRef.current);
+    const dragMove = (event) => {
+      if (!isDragging.current) return;
+      const dx = event.x - lastX;
+      const dy = event.y - lastY;
+      lastX = event.x;
+      lastY = event.y;
 
-    const pathGenerator = geoPath().projection(projection);
+      // Use requestAnimationFrame for smoother rotation
+      requestAnimationFrame(() => smoothRotation(dx, dy));
+    };
 
-    // Get the centroid of the selected country
-    const selectedCountry = geoData.features[selectedCountryIndex];
-    const [cx, cy] = geoCentroid(selectedCountry);
+    const dragEnd = () => {
+      isDragging.current = false;
+    };
 
-    // Calculate the new rotation to center the country
-    const targetRotation = [-cx, -cy];
-    const interpolator = interpolate(rotationRef.current, targetRotation);
+    svg
+      .call(drag()
+        .on('start', dragStart)
+        .on('drag', dragMove)
+        .on('end', dragEnd));
+  }, [geoData, selectedCountryIndex, initialScale]);
 
-    transition()
-      .duration(1250) // Smooth transition duration
-      .tween('rotate', () => (t) => {
-        const newRotation = interpolator(t);
-        projection.rotate(newRotation);
-        rotationRef.current = newRotation;
 
-        select(svgRef.current)
-          .selectAll('path')
-          .attr('d', pathGenerator); // Redraw paths during rotation
-      });
-  }, [selectedCountryIndex, geoData]);
 
   if (!geoData) {
     return <div>Loading map data...</div>;
   }
 
   return (
-      <div style={styles.container}>
-        {geoData && (
+    <div style={styles.container}>
+      {geoData && (
         <input
           type="range"
           min="0"
@@ -144,8 +116,8 @@ const WorldMap = () => {
           style={styles.slider}
         />
       )}
-        <svg ref={svgRef} style={styles.svg}></svg>
-      </div>
+      <svg ref={svgRef} style={styles.svg}></svg>
+    </div>
   );
 };
 
