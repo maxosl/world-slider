@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { geoOrthographic, geoMercator, geoPath, select, drag } from 'd3';
+import debounce from 'lodash.debounce';
 
 const WorldMap = () => {
   const svgRef = useRef(null);
@@ -13,6 +14,10 @@ const WorldMap = () => {
   const [height, setHeight] = useState(800);
   const rotationRef = useRef([0, -30]);
   const isDragging = useRef(false);
+
+  // Debounced setters for width and height
+  const debouncedSetWidth = debounce((value) => setWidth(value), 100);
+  const debouncedSetHeight = debounce((value) => setHeight(value), 100);
 
   useEffect(() => {
     // Fetch list of GeoJSON files
@@ -133,7 +138,7 @@ const WorldMap = () => {
           <input
             type="number"
             value={width}
-            onChange={(e) => setWidth(parseInt(e.target.value))}
+            onChange={(e) => debouncedSetWidth(parseInt(e.target.value))}
           />
         </label>
         <label>
@@ -141,7 +146,7 @@ const WorldMap = () => {
           <input
             type="number"
             value={height}
-            onChange={(e) => setHeight(parseInt(e.target.value))}
+            onChange={(e) => debouncedSetHeight(parseInt(e.target.value))}
           />
         </label>
       </div>
