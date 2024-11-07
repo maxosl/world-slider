@@ -1,25 +1,40 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { geoOrthographic, geoPath, select, drag, interpolate, transition, geoCentroid } from "d3";
-
+import { geoOrthographic, geoMercator, geoPath, select, drag } from 'd3';
 
 const WorldMap = () => {
   const svgRef = useRef(null);
-  const [selectedCountryIndex, setSelectedCountryIndex] = useState(0);
   const [geoData, setGeoData] = useState(null);
-  const rotationRef = useRef([0, -30]); // Start with a slight tilt
+  const [geojsonFiles, setGeojsonFiles] = useState([]);
+  const [selectedFile, setSelectedFile] = useState("world_1914.geojson");
+  const [selectedCountryIndex, setSelectedCountryIndex] = useState(0);
+  const [projectionType, setProjectionType] = useState("Orthographic");
+  const [sensitivity, setSensitivity] = useState(0.5);
+  const [width, setWidth] = useState(800);
+  const [height, setHeight] = useState(800);
+  const rotationRef = useRef([0, -30]);
   const isDragging = useRef(false);
 
-  const width = 800;
-  const height = 800;
-  const initialScale = Math.min(width, height) / 2 - 20;
+  useEffect(() => {
+    // Fetch list of GeoJSON files
+    const fetchGeojsonFiles = async () => {
+      try {
+        const response = await fetch('/geojsonFiles.json');
+        if (!response.ok) throw new Error(`Failed to fetch geojsonFiles.json: ${response.statusText}`);
+        const files = await response.json();
+        setGeojsonFiles(files);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+    fetchGeojsonFiles();
+  }, []);
 
   useEffect(() => {
+    // Fetch selected GeoJSON data
     const fetchGeoData = async () => {
       try {
-        const response = await fetch('/geojson/world_1914.geojson');
-        if (!response.ok) {
-          throw new Error(`Failed to fetch GeoJSON data: ${response.statusText}`);
-        }
+        const response = await fetch(`/geojson/${selectedFile}`);
+        if (!response.ok) throw new Error(`Failed to fetch GeoJSON: ${response.statusText}`);
         const data = await response.json();
         setGeoData(data);
       } catch (error) {
@@ -27,8 +42,7 @@ const WorldMap = () => {
       }
     };
     fetchGeoData();
-  }, [])
-
+  }, [selectedFile]);
 
   useEffect(() => {
     if (!geoData) return;
@@ -37,8 +51,8 @@ const WorldMap = () => {
       .attr('width', width)
       .attr('height', height);
 
-    const projection = geoOrthographic()
-      .scale(initialScale)
+    const projection = (projectionType === "Orthographic" ? geoOrthographic() : geoMercator())
+      .scale(Math.min(width, height) / 2 - 20)
       .translate([width / 2, height / 2])
       .rotate(rotationRef.current);
 
@@ -52,22 +66,16 @@ const WorldMap = () => {
       .attr('fill', (d, i) => (i === selectedCountryIndex ? 'blue' : '#ccc'))
       .attr('stroke', '#333');
 
-    // Function to handle rotation and smooth the dragging effect
     const smoothRotation = (dx, dy) => {
       const [lambda, phi] = rotationRef.current;
-      const sensitivity = 0.5; // Adjust sensitivity to control speed
-
       rotationRef.current = [
         lambda + dx * sensitivity,
         Math.max(-90, Math.min(90, phi - dy * sensitivity)),
       ];
-
       projection.rotate(rotationRef.current);
-
-      svg.selectAll('path').attr('d', pathGenerator); // Redraw paths
+      svg.selectAll('path').attr('d', pathGenerator);
     };
 
-    // Drag event handler with requestAnimationFrame for smoother transitions
     let lastX, lastY;
 
     const dragStart = (event) => {
@@ -82,8 +90,6 @@ const WorldMap = () => {
       const dy = event.y - lastY;
       lastX = event.x;
       lastY = event.y;
-
-      // Use requestAnimationFrame for smoother rotation
       requestAnimationFrame(() => smoothRotation(dx, dy));
     };
 
@@ -91,32 +97,65 @@ const WorldMap = () => {
       isDragging.current = false;
     };
 
-    svg
-      .call(drag()
-        .on('start', dragStart)
-        .on('drag', dragMove)
-        .on('end', dragEnd));
-  }, [geoData, selectedCountryIndex, initialScale]);
+    svg.call(drag().on('start', dragStart).on('drag', dragMove).on('end', dragEnd));
 
-
-
-  if (!geoData) {
-    return <div>Loading map data...</div>;
-  }
+  }, [geoData, width, height, projectionType, sensitivity, selectedCountryIndex]);
 
   return (
     <div style={styles.container}>
-      {geoData && (
+      <div style={styles.menuPanel}>
+        <label>
+          GeoJSON File:
+          <select value={selectedFile} onChange={(e) => setSelectedFile(e.target.value)}>
+            {geojsonFiles.map((file) => (
+              <option key={file} value={file}>{file}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Projection:
+          <select value={projectionType} onChange={(e) => setProjectionType(e.target.value)}>
+            <option value="Orthographic">Orthographic</option>
+            <option value="Mercator">Mercator</option>
+          </select>
+        </label>
+        <label>
+          Rotation Sensitivity:
+          <input
+            type="number"
+            step="0.1"
+            value={sensitivity}
+            onChange={(e) => setSensitivity(parseFloat(e.target.value))}
+          />
+        </label>
+        <label>
+          Width:
+          <input
+            type="number"
+            value={width}
+            onChange={(e) => setWidth(parseInt(e.target.value))}
+          />
+        </label>
+        <label>
+          Height:
+          <input
+            type="number"
+            value={height}
+            onChange={(e) => setHeight(parseInt(e.target.value))}
+          />
+        </label>
+      </div>
+      <div style={styles.mapContainer}>
+        <svg ref={svgRef} style={styles.svg}></svg>
         <input
           type="range"
           min="0"
-          max={geoData.features.length - 1}
+          max={geoData ? geoData.features.length - 1 : 0}
           value={selectedCountryIndex}
-          onChange={(e) => setSelectedCountryIndex(Number(e.target.value))}
+          onChange={(e) => setSelectedCountryIndex(parseInt(e.target.value))}
           style={styles.slider}
         />
-      )}
-      <svg ref={svgRef} style={styles.svg}></svg>
+      </div>
     </div>
   );
 };
@@ -124,18 +163,26 @@ const WorldMap = () => {
 const styles = {
   container: {
     display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  menuPanel: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    marginRight: '20px',
+  },
+  mapContainer: {
+    display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: '100vh',
   },
   svg: {
     cursor: 'grab',
-    marginBottom: '15px',
   },
   slider: {
-    width: '80%',
-    maxWidth: '600px',
+    marginTop: '20px',
+    width: '100%',
   },
 };
 
