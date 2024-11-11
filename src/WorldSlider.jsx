@@ -10,18 +10,18 @@ const WorldMap = () => {
   const [selectedCountryIndex, setSelectedCountryIndex] = useState(0);
   const [projectionType, setProjectionType] = useState("Orthographic");
   const [sensitivity, setSensitivity] = useState(0.5);
+  const [zoomScale, setZoomScale] = useState(4000);
   const [zoomLevel, setZoomLevel] = useState(4000);
   const [tilt, setTilt] = useState(45);
   const [width, setWidth] = useState(800);
   const [height, setHeight] = useState(800);
+  const [isCountryZoomed, setIsCountryZoomed] = useState(false);
   const rotationRef = useRef([0, -30]);
   const isDragging = useRef(false);
 
   // Debounced setters for width and height
   const debouncedSetWidth = debounce((value) => setWidth(value), 100);
   const debouncedSetHeight = debounce((value) => setHeight(value), 100);
-  const debouncedSetZoomLevel = debounce((value) => setWidth(value), 100);
-  const debouncedSetTilt = debounce((value) => setHeight(value), 400);
 
   useEffect(() => {
     // Fetch list of GeoJSON files
@@ -53,7 +53,7 @@ const WorldMap = () => {
 
     // Create target rotation and zoom settings
     const targetRotation = [-cx, -cy, tilt];
-    const targetScale = zoomLevel;
+    const targetScale = zoomScale;
 
     const pathGenerator = geoPath().projection(projection);
 
@@ -72,8 +72,9 @@ const WorldMap = () => {
           rotationRef.current = projection.rotate();
           svg.selectAll('path').attr('d', pathGenerator); // Redraw paths
         };
-      });
-  }, [tilt, zoomLevel]);
+      })
+      .on('end', () => setIsCountryZoomed(true));
+  }, [tilt, zoomScale]);
 
   useEffect(() => {
     // Fetch selected GeoJSON data
@@ -164,8 +165,8 @@ const WorldMap = () => {
           <input
             type="number"
             step="100"
-            value={zoomLevel}
-            onChange={(e) => setZoomLevel(parseFloat(e.target.value))}
+            value={zoomScale}
+            onChange={(e) => setZoomScale(parseFloat(e.target.value))}
           />
         </label>
         <label>
@@ -203,7 +204,7 @@ const WorldMap = () => {
           />
         </label>
       </div>
-      <div style={styles.mapContainer}>
+      <div style={{ ...styles.mapContainer, width, height, position: 'relative' }}>
         <svg ref={svgRef} style={styles.svg}></svg>
         <input
           type="range"
@@ -213,6 +214,12 @@ const WorldMap = () => {
           onChange={(e) => setSelectedCountryIndex(parseInt(e.target.value))}
           style={styles.slider}
         />
+        {isCountryZoomed && (
+          <div style={styles.overlay}>
+            <button onClick={() => { setIsCountryZoomed(false) }} style={styles.closeButton}>✖</button>
+            <p style={styles.overlayText}>Country Information: This is a placeholder text for country details.</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -241,6 +248,30 @@ const styles = {
   slider: {
     marginTop: '20px',
     width: '100%',
+  },
+  overlay: {
+    position: 'absolute',
+    top: '10px',
+    left: '10px',
+    width: '200px',
+    padding: '20px',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    border: '1px solid #ccc',
+    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+    zIndex: 10,
+  },
+  overlayText: {
+    fontSize: '16px',
+    margin: 0,
+  },
+  closeButton: {
+    position: 'absolute',
+    top: '5px',
+    right: '5px',
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    fontSize: '16px',
   },
 };
 
