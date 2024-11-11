@@ -10,6 +10,7 @@ const WorldMap = () => {
   const [selectedCountryIndex, setSelectedCountryIndex] = useState(0);
   const [projectionType, setProjectionType] = useState("Orthographic");
   const [sensitivity, setSensitivity] = useState(0.5);
+  const [zoomScale, setZoomScale] = useState(4000);
   const [zoomLevel, setZoomLevel] = useState(4000);
   const [tilt, setTilt] = useState(45);
   const [width, setWidth] = useState(800);
@@ -52,7 +53,7 @@ const WorldMap = () => {
 
     // Create target rotation and zoom settings
     const targetRotation = [-cx, -cy, tilt];
-    const targetScale = zoomLevel;
+    const targetScale = zoomScale;
 
     const pathGenerator = geoPath().projection(projection);
 
@@ -73,7 +74,7 @@ const WorldMap = () => {
         };
       })
       .on('end', () => setIsCountryZoomed(true));
-  }, [tilt, zoomLevel]);
+  }, [tilt, zoomScale]);
 
   useEffect(() => {
     // Fetch selected GeoJSON data
@@ -164,8 +165,8 @@ const WorldMap = () => {
           <input
             type="number"
             step="100"
-            value={zoomLevel}
-            onChange={(e) => setZoomLevel(parseFloat(e.target.value))}
+            value={zoomScale}
+            onChange={(e) => setZoomScale(parseFloat(e.target.value))}
           />
         </label>
         <label>
@@ -215,7 +216,7 @@ const WorldMap = () => {
         />
         {isCountryZoomed && (
           <div style={styles.overlay}>
-            <button onClick={() => setIsCountryZoomed(false)} style={styles.closeButton}>✖</button>
+            <button onClick={() => { setIsCountryZoomed(false) }} style={styles.closeButton}>✖</button>
             <p style={styles.overlayText}>Country Information: This is a placeholder text for country details.</p>
           </div>
         )}
